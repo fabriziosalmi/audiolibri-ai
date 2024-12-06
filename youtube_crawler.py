@@ -139,13 +139,16 @@ class YouTubeAudiobookCrawler:
                     data = str(script).split('var ytInitialData = ')[1].split(';</script>')[0]
                     try:
                         json_data = json.loads(data)
-                        contents = (json_data.get('contents', {})
-                                  .get('twoColumnSearchResultsRenderer', {})
-                                  .get('primaryContents', {})
-                                  .get('sectionListRenderer', {})
-                                  .get('contents', [{}])[0]
-                                  .get('itemSectionRenderer', {})
-                                  .get('contents', []))
+                        contents = []
+                        try:
+                            search_content = json_data.get('contents', {}).get('twoColumnSearchResultsRenderer', {}).get('primaryContents', {})
+                            if search_content:
+                                contents = (search_content.get('sectionListRenderer', {})
+                                          .get('contents', [{}])[0]
+                                          .get('itemSectionRenderer', {})
+                                          .get('contents', []))
+                        except (IndexError, KeyError):
+                            self.logger.warning("Could not parse search results structure")
                         
                         for content in contents:
                             if 'videoRenderer' in content:
