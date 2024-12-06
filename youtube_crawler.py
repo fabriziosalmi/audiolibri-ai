@@ -139,40 +139,48 @@ class YouTubeAudiobookCrawler:
         return None
 
     def get_video_metadata(self, url_or_id):
-        """Get comprehensive video metadata using pytube"""
         try:
             video_id = self.extract_video_id(url_or_id) if '/' in url_or_id else url_or_id
-            if not video_id:
+            if not video_id or self.is_video_blocked(video_id):
                 return None
 
-            if self.is_video_blocked(video_id):
-                return None
-
-            # Add random delay between requests
             time.sleep(random.uniform(1, 3))
 
-            headers = {
+            # Set default headers globally for this request
+            import pytube.__main__
+            pytube.__main__.request.default_headers = {
                 'User-Agent': self.get_random_user_agent(),
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Connection': 'keep-alive',
             }
 
             yt = YouTube(
                 f'https://youtube.com/watch?v={video_id}',
                 use_oauth=False,
-                allow_oauth_cache=True,
-                headers=headers
+                allow_oauth_cache=True
             )
 
-            # Get all available audio stream information
+            # Wait for video info to be populated
+            retries = 3
+            while retries > 0:
+                try:
+                    _ = yt.title  # Force video info fetch
+                    break
+                except:
+                    retries -= 1
+                    time.sleep(2)
+            else:
+                return None
+
             audio_streams = [{
                 'itag': stream.itag,
                 'mime_type': stream.mime_type,
                 'abr': stream.abr,
                 'filesize': stream.filesize
             } for stream in yt.streams.filter(only_audio=True)]
+
+            if not audio_streams:
+                return None
 
             metadata = {
                 'video_id': video_id,
@@ -182,7 +190,7 @@ class YouTubeAudiobookCrawler:
                 'duration_seconds': yt.length,
                 'view_count': yt.views,
                 'description': yt.description,
-                'keywords': yt.keywords,
+                'keywords': yt.keywords or [],
                 'rating': yt.rating,
                 'age_restricted': yt.age_restricted,
                 'audio_streams': json.dumps(audio_streams),
@@ -197,7 +205,7 @@ class YouTubeAudiobookCrawler:
         except Exception as e:
             self.logger.error(f"Error processing video {url_or_id}: {str(e)}")
             if "403" in str(e):
-                time.sleep(random.uniform(5, 10))  # Longer delay on 403
+                time.sleep(random.uniform(5, 10))
             self.update_video_error(url_or_id, str(e))
             return None
 
