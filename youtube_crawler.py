@@ -411,7 +411,7 @@ def main():
         queries=args.queries,
         batch_size=args.batch_size,
         save_interval_minutes=args.save_interval,
-        time_limit_minutes=args.time_limit
+        time_limit_minutes=8
     )
 
 if __name__ == '__main__':
