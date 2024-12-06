@@ -148,11 +148,22 @@ class YouTubeAudiobookCrawler:
             if self.is_video_blocked(video_id):
                 return None
 
+            # Add random delay between requests
+            time.sleep(random.uniform(1, 3))
+
+            headers = {
+                'User-Agent': self.get_random_user_agent(),
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+            }
+
             yt = YouTube(
                 f'https://youtube.com/watch?v={video_id}',
                 use_oauth=False,
                 allow_oauth_cache=True,
-                on_progress_callback=None
+                headers=headers
             )
 
             # Get all available audio stream information
@@ -177,14 +188,16 @@ class YouTubeAudiobookCrawler:
                 'audio_streams': json.dumps(audio_streams),
                 'subtitles_available': bool(yt.captions),
                 'language': self.detect_language(f"{yt.title} {yt.description}"),
-                'quality': max(stream.abr for stream in yt.streams.filter(only_audio=True)),
-                'filesize_bytes': max(stream.filesize for stream in yt.streams.filter(only_audio=True))
+                'quality': max((stream.abr for stream in yt.streams.filter(only_audio=True)), default=0),
+                'filesize_bytes': max((stream.filesize for stream in yt.streams.filter(only_audio=True)), default=0)
             }
 
             return metadata
 
         except Exception as e:
             self.logger.error(f"Error processing video {url_or_id}: {str(e)}")
+            if "403" in str(e):
+                time.sleep(random.uniform(5, 10))  # Longer delay on 403
             self.update_video_error(url_or_id, str(e))
             return None
 
