@@ -237,7 +237,7 @@ class YouTubeAudiobookCrawler:
             self.update_video_error(video_id, str(e))
             return None
 
-    def continuous_search(self, queries, batch_size=50, save_interval_minutes=60):
+    def continuous_search(self, queries, batch_size=50, save_interval_minutes=60, time_limit_minutes=None):
         """Continuously search for videos with multiple queries"""
         self.logger.info("Starting continuous search...")
         
@@ -270,7 +270,12 @@ class YouTubeAudiobookCrawler:
                     
                 # Sleep between search cycles
                 self.logger.info("Completed search cycle, sleeping...")
-                time.sleep(save_interval_minutes * 60)
+                if check_time_limit():
+                    self.logger.info("Time limit reached, shutting down...")
+                    break
+                    
+                if not time_limit_minutes:
+                    time.sleep(save_interval_minutes * 60)
                 
             except KeyboardInterrupt:
                 self.logger.info("Gracefully shutting down...")
@@ -405,7 +410,8 @@ def main():
     crawler.continuous_search(
         queries=args.queries,
         batch_size=args.batch_size,
-        save_interval_minutes=args.save_interval
+        save_interval_minutes=args.save_interval,
+        time_limit_minutes=args.time_limit
     )
 
 if __name__ == '__main__':
