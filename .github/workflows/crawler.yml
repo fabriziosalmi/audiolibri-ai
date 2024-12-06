@@ -1,0 +1,80 @@
+name: YouTube Audiobook Crawler
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Run every hour
+  workflow_dispatch:      # Allow manual trigger
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10   # Max runtime of 10 minutes
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Full history to handle releases
+          
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytube langdetect beautifulsoup4 requests
+          
+      - name: Setup data directory
+        run: mkdir -p data
+          
+      - name: Download previous database
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -L -H "Accept: application/vnd.github+json" \
+               -H "Authorization: Bearer $GITHUB_TOKEN" \
+               -H "X-GitHub-Api-Version: 2022-11-28" \
+               "https://api.github.com/repos/${{ github.repository }}/releases/latest" | \
+          jq -r '.assets[] | select(.name=="crawler_data.db") | .browser_download_url' | \
+          xargs curl -L -o data/crawler_data.db
+          
+      - name: Run crawler
+        run: |
+          python youtube_crawler.py \
+            --min-duration 60 \
+            --queries "audiobook" "full audiobook" "complete audiobook" \
+            --save-interval 5 \
+            --batch-size 25 \
+            --max-workers 4 \
+            --time-limit 9  # Leave 1 minute for cleanup
+            
+      - name: Prepare release assets
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          tar czf data_${TIMESTAMP}.tar.gz *.json data/crawler_data.db
+          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
+          
+      - name: Create or update release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete previous release if exists
+          gh release delete latest --cleanup-tag || true
+          
+          # Create new release with database and archive
+          gh release create latest \
+            --title "Crawler Data ${TIMESTAMP}" \
+            --notes "Automated update - ${TIMESTAMP}" \
+            data/crawler_data.db \
+            data_${TIMESTAMP}.tar.gz
+            
+      - name: Cleanup old archives
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Keep only last 24 releases
+          gh release list | tail -n +25 | cut -f1 | xargs -I {} gh release delete {} --cleanup-tag || true
